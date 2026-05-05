@@ -86,6 +86,15 @@ Keep a discussion only if **all** of the following hold:
   `answerChosenAt == null`. The `answered: false` connection arg is the
   primary cut; this catches edge cases (re-categorized threads, manual
   unmarks).
+- **Not already reported.** Fetch existing issues in
+  `gistrec/community-assistant` once at the start of this step and skip any
+  candidate whose URL appears in an existing body (open or closed):
+
+  ```bash
+  gh issue list -R gistrec/community-assistant \
+    --state all --limit 200 \
+    --json title,body,url
+  ```
 - `category.isAnswerable == true`, and the category is not
   announcement / general / show-and-tell.
 - `updatedAt` is within the last 90 days.
@@ -114,43 +123,46 @@ no "great question". If adding to an existing comment, lead with what's new.
 
 ### 5. Stop
 
-Cap the run at **5 drafts total** and **1 draft per repo**. If nothing passes
-the bar, print `No drafts today.` and exit.
+Cap the run at **5 drafts total** and **1 draft per repo**. **Zero drafts is
+acceptable** — never inflate to fill the quota. If nothing passes the bar,
+print a short summary of what was checked (repos scanned, candidates seen,
+why each was rejected) and end with `No drafts today.`.
 
-### 6. Open one issue
+### 6. Open issues (one per draft)
 
-Create **exactly one** issue in this repo summarising the day's drafts. Use
-the title and per-draft section format from `CLAUDE.md` → "Output format".
-If no drafts passed the bar, skip this step entirely (already exited at
-step 5 with `No drafts today.`).
+Create one issue per draft. Title and body format come from
+`CLAUDE.md` → "Output format" — do not improvise the format here.
 
-Build the body by concatenating one section per draft, separated by `---`,
-then create the issue:
+For each draft:
 
-```bash
-TODAY=$(date -u +%F)
-BODY_FILE=$(mktemp)
+1. Build a body file (`mktemp`) with these fields and sections:
+   - `**Discussion:** <url>`
+   - `**Repository:** <owner/repo>`
+   - `**Author:** @<discussion author>`
+   - `**Updated:** <discussion updatedAt>`
+   - `**Topic:** <topic>`
+   - `**Confidence:** high | medium`
+   - `**Why useful:** <short reason>`
+   - `## Context` — 1–3 sentences summarising the discussion and existing
+     comments.
+   - `## Draft reply` — the draft.
+   - `## Checklist` — three unchecked items per the CLAUDE.md template.
 
-# For each draft, append a section to $BODY_FILE in the format from CLAUDE.md:
-#   ## <owner/repo> — <discussion title>
-#   - **Link:** ...
-#   - **Topic:** ...
-#   - **Confidence:** ...
-#   - **Why useful:** ...
-#
-#   ### Draft
-#
-#   <answer text>
-#
-#   ---
+2. Create the issue:
 
-gh issue create \
-  -R gistrec/community-assistant \
-  --title "Daily discussion drafts — $TODAY" \
-  --body-file "$BODY_FILE"
+   ```bash
+   gh issue create \
+     -R gistrec/community-assistant \
+     --title "Draft: <owner/repo> — <discussion title>" \
+     --body-file "$BODY_FILE" \
+     --label "draft,github-discussion,needs-review"
+   ```
 
-rm -f "$BODY_FILE"
-```
+3. **Label fallback.** If the call fails because the labels do not exist
+   in the repo, retry the same `gh issue create` **without** `--label`. Do
+   not auto-create labels — only attach them when they already exist.
+
+4. Remove the temp file.
 
 ### 7. Report
 

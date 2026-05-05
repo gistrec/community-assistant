@@ -13,8 +13,10 @@ A daily scheduled routine runs `/daily` in this repository:
 1. Searches GitHub (via GraphQL) for recent unanswered discussions in repos
    matching the target topics in [`CLAUDE.md`](CLAUDE.md).
 2. Drafts a short, practical answer for each one where confidence is high.
-3. Creates **one issue per run** in this repo summarising the day's drafts
-   (title `Daily discussion drafts — YYYY-MM-DD`).
+3. Creates **one issue per draft** in this repo (title
+   `Draft: <owner/repo> — <discussion title>`), labelled `draft`,
+   `github-discussion`, `needs-review`. Discussions already reported in this
+   repo's issues are skipped.
 
 ## Setup
 
@@ -22,6 +24,12 @@ A daily scheduled routine runs `/daily` in this repository:
 gh auth login          # GitHub CLI must be authenticated
 git remote add origin git@github.com:gistrec/community-assistant.git
 git push -u origin main
+
+# Optional: pre-create labels so the routine can attach them
+# (otherwise issues are created without labels via fallback).
+gh label create draft             -R gistrec/community-assistant --color ededed
+gh label create github-discussion -R gistrec/community-assistant --color 0e8a16
+gh label create needs-review      -R gistrec/community-assistant --color fbca04
 ```
 
 Then schedule the routine. In Claude Code:
@@ -50,5 +58,5 @@ From this directory in Claude Code:
 
 | Path | Purpose |
 | --- | --- |
-| `CLAUDE.md` | Project rules, target topics, discussion-handling behavior. Auto-loaded by Claude Code. |
+| `CLAUDE.md` | Project rules, target topics, discussion-handling behavior, output format. Auto-loaded by Claude Code. |
 | `.claude/commands/daily.md` | `/daily` slash command — the routine itself. |
