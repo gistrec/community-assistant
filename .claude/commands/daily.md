@@ -1,3 +1,7 @@
+---
+description: Find unanswered GitHub Discussions on target topics and draft replies as issues in this repo
+---
+
 Run the daily Community Assistant routine.
 
 Read `CLAUDE.md` first — rules, target topics, discussion-handling behavior,

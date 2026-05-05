@@ -104,6 +104,8 @@ Draft: <owner/repo> — <discussion title>
 Issue body:
 
 ```markdown
+## Discussion
+
 - **Discussion:** <url>
 - **Repository:** <owner/repo>
 - **Author:** @<discussion author>
