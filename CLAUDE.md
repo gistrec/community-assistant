@@ -106,9 +106,9 @@ Issue body:
 ```markdown
 ## Discussion
 
-- **Discussion:** <url>
-- **Repository:** <owner/repo>
-- **Author:** @<discussion author>
+- **Discussion:** [<discussion title>](<url>)
+- **Repository:** [<owner/repo>](https://github.com/<owner/repo>)
+- **Author:** [<discussion author>](https://github.com/<discussion author>)
 - **Updated:** <discussion updatedAt>
 - **Topic:** <one of the target topics>
 - **Confidence:** high | medium
