@@ -30,6 +30,10 @@ git push -u origin main
 gh label create draft             -R gistrec/community-assistant --color ededed
 gh label create github-discussion -R gistrec/community-assistant --color 0e8a16
 gh label create needs-review      -R gistrec/community-assistant --color fbca04
+
+# Outcome labels — applied manually after posting the reply.
+gh label create answer-accepted   -R gistrec/community-assistant --color 0e8a16
+gh label create answer-rejected   -R gistrec/community-assistant --color b60205
 ```
 
 Then schedule the routine. In Claude Code:
