@@ -10,47 +10,67 @@ not override them.
 
 ## Steps
 
-### 1. Find candidate repositories
+### 1. Gather candidate discussions
 
-For each primary topic in `CLAUDE.md`, use `gh api graphql` to find active
-repos with discussions enabled:
+Use **all three** discovery paths below and merge the results (dedup by
+discussion URL). Don't rely on any single one — each catches threads the
+others miss.
+
+Let `__SINCE__` = `today − 90d`, ISO date (matches the 90-day freshness
+filter in step 3).
+
+#### 1a. Global discussion search (primary)
+
+Search discussions across all of GitHub by topical keywords. This is the
+widest net and doesn't require knowing repos ahead of time.
 
 ```bash
 gh api graphql -f query='
 query($q: String!) {
-  search(query: $q, type: REPOSITORY, first: 25) {
+  search(query: $q, type: DISCUSSION, first: 50) {
     nodes {
-      ... on Repository {
-        nameWithOwner
-        stargazerCount
-        hasDiscussionsEnabled
-        pushedAt
+      ... on Discussion {
+        url
+        title
+        bodyText
+        author { login }
+        createdAt
+        updatedAt
+        isAnswered
+        answer { bodyText author { login } createdAt }
+        answerChosenAt
+        category { name isAnswerable }
+        repository { nameWithOwner stargazerCount }
+        comments(first: 20) {
+          totalCount
+          nodes { bodyText author { login } createdAt isAnswer }
+        }
       }
     }
   }
-}' -f q="topic:cpp pushed:>=__SINCE__ sort:stars-desc"
+}' -f q="<keywords> is:unanswered updated:>=__SINCE__"
 ```
 
-`__SINCE__` = `today − 30d`, ISO date.
+Run this once per topic keyword from `CLAUDE.md` → "Target topics" (both
+primary **and** "also welcome"). Suggested keyword set: `cmake`, `vcpkg`,
+`conan`, `pybind11`, `cpp`, `c++`, `modern c++`, `python packaging`,
+`pyproject`, `setuptools`, `poetry`, `github actions`. Add `language:C++`
+or `language:Python` to a query when the bare keyword would be too broad.
 
-Topic mapping:
+Treat `is:unanswered` as best-effort — still apply the defensive check in
+step 3 (`isAnswered == false`, `answer == null`, `answerChosenAt == null`).
 
-- C++ → `topic:cpp` (and/or `language:C++`)
-- Python → `topic:python` (and/or `language:Python`)
-- CMake → `topic:cmake`
+#### 1b. Seed repository scan (always run)
 
-Keep only repos with `hasDiscussionsEnabled = true`.
-
-### 2. List unanswered discussions per repo
-
-For each candidate repo, fetch recent unanswered discussions with everything
-needed to filter and draft. Filter at the API level via `answered: false`
-(GitHub added the argument in October 2023):
+For every repo listed in `CLAUDE.md` → "Seed repositories", fetch recent
+unanswered discussions directly. This guarantees coverage of high-signal
+projects regardless of what search returns.
 
 ```bash
 gh api graphql -f query='
 query($owner: String!, $name: String!) {
   repository(owner: $owner, name: $name) {
+    hasDiscussionsEnabled
     discussions(
       first: 20
       answered: false
@@ -69,18 +89,48 @@ query($owner: String!, $name: String!) {
         category { name isAnswerable }
         comments(first: 20) {
           totalCount
-          nodes {
-            bodyText
-            author { login }
-            createdAt
-            isAnswer
-          }
+          nodes { bodyText author { login } createdAt isAnswer }
         }
       }
     }
   }
 }' -f owner="<owner>" -f name="<name>"
 ```
+
+Skip the repo if `hasDiscussionsEnabled = false` (the seed list can drift).
+
+#### 1c. Topic-based repo discovery (fallback)
+
+As a third path, find additional active repos via repository search and then
+pull their unanswered discussions with the same query as 1b.
+
+```bash
+gh api graphql -f query='
+query($q: String!) {
+  search(query: $q, type: REPOSITORY, first: 50) {
+    nodes {
+      ... on Repository {
+        nameWithOwner
+        stargazerCount
+        hasDiscussionsEnabled
+        pushedAt
+      }
+    }
+  }
+}' -f q="topic:cpp language:C++ pushed:>=__SINCE__ sort:stars-desc"
+```
+
+Run this for each topic with both `topic:` and `language:` qualifiers
+combined (per `CLAUDE.md` — `topic:` alone is too narrow). Paginate past 50
+if results are sparse. Keep only repos with `hasDiscussionsEnabled = true`,
+then fetch their discussions with the 1b query.
+
+### 2. Merge and dedup
+
+Merge nodes from 1a, 1b, 1c into a single candidate list keyed by discussion
+`url`. Carry forward `repository.nameWithOwner` (1a provides it inline; for
+1b/1c set it from the source repo). Do not re-fetch a discussion you already
+have from another path.
 
 ### 3. Filter
 

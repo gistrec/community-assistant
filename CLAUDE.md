@@ -44,7 +44,7 @@ Primary:
 - Python (packaging, environments, common patterns)
 - CMake
 
-Also welcome:
+Also welcome (treat as full search seeds, not just post-hoc filters):
 
 - vcpkg / Conan
 - header-only libraries
@@ -52,26 +52,66 @@ Also welcome:
 - packaging
 - geospatial algorithms
 
+Every topic above is eligible as a query keyword in the discussion search
+described under "Tooling". Don't restrict the candidate pool to only the
+primary three.
+
+## Seed repositories
+
+The routine should always scan unanswered discussions in this curated list
+before / alongside any search-based discovery. These are high-traffic projects
+where good Q&A regularly appears and the search-by-topic path tends to miss
+them (no `topic:` tag, or buried by larger repos).
+
+- `microsoft/vcpkg`
+- `microsoft/STL`
+- `pybind/pybind11`
+- `nlohmann/json`
+- `fmtlib/fmt`
+- `gabime/spdlog`
+- `catchorg/Catch2`
+- `google/googletest`
+- `conan-io/conan`
+- `python-poetry/poetry`
+- `pypa/setuptools`
+- `astral-sh/uv`
+- `actions/runner`
+
+Skip any seed repo where `hasDiscussionsEnabled = false` (verify defensively —
+this list can drift). It is fine to add/remove entries; keep it small (≤ ~20)
+and only include repos with active answerable categories.
+
 ## Tooling
 
 Use `gh api graphql` for everything related to GitHub Discussions.
-**Do not use `gh search discussions` — that command does not exist.**
+**Do not use the CLI `gh search discussions` — that subcommand does not
+exist.** GraphQL `search(type: DISCUSSION, ...)` does exist and is the
+preferred way to find candidate threads — they are not the same thing.
 
 GraphQL is required for:
 
-- **Listing repository discussions:**
-  `repository.discussions(first, orderBy, answered)`.
-- **Filtering unanswered at the API level:** pass `answered: false` to the
-  connection. GitHub added this argument in October 2023. Use it first, but
-  still read `isAnswered`, `answer`, and `answerChosenAt` defensively.
+- **Global discussion search (preferred discovery path):**
+  `search(type: DISCUSSION, query: "<keywords> is:unanswered updated:>=<date>", first: N)`.
+  This finds threads across all of GitHub without needing to first enumerate
+  repositories. Query qualifiers worth combining: `is:unanswered`,
+  `updated:>=YYYY-MM-DD`, `in:title,body`, `language:<lang>`, `repo:<owner/name>`.
+  Treat `is:unanswered` as best-effort and still verify `isAnswered`,
+  `answer`, `answerChosenAt` per node.
+- **Listing repository discussions** (for the seed list and any repo-scoped
+  scan): `repository.discussions(first, orderBy, answered)`. Pass
+  `answered: false` (GitHub added this in October 2023). Still read
+  `isAnswered`, `answer`, and `answerChosenAt` defensively.
 - **Reading content per discussion:** `title`, `bodyText`, `url`,
   `author { login }`, `createdAt`, `updatedAt`, `isAnswered`,
   `answer { bodyText author { login } createdAt }`, `answerChosenAt`,
   `comments(first: N) { totalCount nodes { bodyText author { login } createdAt isAnswer } }`,
   `category { name isAnswerable }`.
 
-For finding candidate repositories, `gh api graphql` with
-`search(type: REPOSITORY, query: "topic:<topic>")` is fine.
+For repository-level discovery (as a third, fallback path), `gh api graphql`
+with `search(type: REPOSITORY, query: "topic:<topic> language:<lang> pushed:>=<date>")`
+is fine. Combine `topic:` **and** `language:` — many active C++/Python repos
+don't set a `topic:` tag, so `topic:` alone is too narrow. Paginate past the
+first 25 results when the query is broad.
 
 **Read-only on external repos.** The only allowed write call is:
 
