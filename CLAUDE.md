@@ -19,6 +19,12 @@ selected technical topics and drafts possible replies for me to review.
   my profile. If the most useful answer would be "use library X" and X is
   mine, skip the draft.
 - Cite official docs / standards when appropriate; never invent APIs or flags.
+- **Never write a bare `@<login>`** anywhere in the issue body — GitHub will
+  turn it into a mention and notify that user, which we don't want for
+  unposted drafts. Prefer descriptive references ("OP", "the answer above",
+  "the previous comment"). If a specific login is genuinely necessary, write
+  it as a markdown link — `[@<login>](https://github.com/<login>)` — never
+  a bare `@<login>`.
 
 ## Discussion handling
 
@@ -27,11 +33,15 @@ selected technical topics and drafts possible replies for me to review.
 - **Skip discussions that already appear solved**, even if not marked
   `isAnswered`. Cues: OP saying "thanks, fixed", a working solution in a
   comment with no follow-up problems, an explicit "resolved" remark, lots of
-  positive reactions on a single comment.
+  positive reactions on a single comment, a comment with `isAnswer = true`.
+  When in doubt, skip — duplicating a working answer is worse than missing a
+  draft.
 - **Do not repeat an existing answer.** Draft only if you can add a clearly
   useful correction or missing detail (a caveat, a better idiom, a related
-  pitfall). Lead the draft by naming what new info you're adding
-  (e.g. "Adding to @user — one caveat: …").
+  pitfall). Lead the draft by naming what new info you're adding (e.g.
+  "Adding to the answer above — one caveat: …"). Refer to prior commenters
+  descriptively; if a login is unavoidable, use the link form from Rules
+  (`[@<login>](https://github.com/<login>)`) — never bare `@<login>`.
 - Before creating an issue, search existing open and closed issues in
   `gistrec/community-assistant` for the discussion URL. If the URL was already
   reported, skip it.
@@ -91,18 +101,21 @@ preferred way to find candidate threads — they are not the same thing.
 GraphQL is required for:
 
 - **Global discussion search (preferred discovery path):**
-  `search(type: DISCUSSION, query: "<keywords> is:unanswered updated:>=<date>", first: N)`.
+  `search(type: DISCUSSION, query: "<keywords> is:unanswered is:open created:>=<date>", first: N)`.
   This finds threads across all of GitHub without needing to first enumerate
-  repositories. Query qualifiers worth combining: `is:unanswered`,
-  `updated:>=YYYY-MM-DD`, `in:title,body`, `language:<lang>`, `repo:<owner/name>`.
-  Treat `is:unanswered` as best-effort and still verify `isAnswered`,
-  `answer`, `answerChosenAt` per node.
+  repositories. Query qualifiers worth combining: `is:unanswered`, `is:open`,
+  `created:>=YYYY-MM-DD`, `updated:>=YYYY-MM-DD`, `in:title,body`,
+  `language:<lang>`, `repo:<owner/name>`. Treat `is:unanswered` and `is:open`
+  as best-effort and still verify `isAnswered`, `answer`, `answerChosenAt`,
+  `closed` per node.
 - **Listing repository discussions** (for the seed list and any repo-scoped
   scan): `repository.discussions(first, orderBy, answered)`. Pass
-  `answered: false` (GitHub added this in October 2023). Still read
-  `isAnswered`, `answer`, and `answerChosenAt` defensively.
+  `answered: false` (GitHub added this in October 2023) and prefer
+  `orderBy: {field: CREATED_AT, direction: DESC}` so the freshest questions
+  surface first. Still read `isAnswered`, `answer`, `answerChosenAt`, and
+  `closed` defensively.
 - **Reading content per discussion:** `title`, `bodyText`, `url`,
-  `author { login }`, `createdAt`, `updatedAt`, `isAnswered`,
+  `author { login }`, `createdAt`, `updatedAt`, `closed`, `isAnswered`,
   `answer { bodyText author { login } createdAt }`, `answerChosenAt`,
   `comments(first: N) { totalCount nodes { bodyText author { login } createdAt isAnswer } }`,
   `category { name isAnswerable }`.
@@ -175,8 +188,13 @@ Issue body:
 - Max 1 draft per repo.
 - Skip if the draft would be longer than ~15 lines or require significant
   guesswork.
-- Prefer discussions **updated within the last 90 days** — older threads are
-  usually stale.
+- Only consider discussions **created within the last 30 days** — older
+  threads are usually stale or already worked through in comments.
+- Skip **closed** discussions (`closed = true`) — the author isn't seeking
+  more input.
+- Skip discussions that already have an adequate answer in any comment, even
+  if not marked as the chosen answer. Only draft if you can add a clearly
+  useful correction or missing detail.
 - Prefer categories where `category.isAnswerable = true` (Q&A-style).
 - Skip announcement / general / show-and-tell categories — no accepted
   answer is expected there.

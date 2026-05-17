@@ -16,7 +16,7 @@ Use **all three** discovery paths below and merge the results (dedup by
 discussion URL). Don't rely on any single one — each catches threads the
 others miss.
 
-Let `__SINCE__` = `today − 90d`, ISO date (matches the 90-day freshness
+Let `__SINCE__` = `today − 30d`, ISO date (matches the 30-day freshness
 filter in step 3).
 
 #### 1a. Global discussion search (primary)
@@ -36,6 +36,7 @@ query($q: String!) {
         author { login }
         createdAt
         updatedAt
+        closed
         isAnswered
         answer { bodyText author { login } createdAt }
         answerChosenAt
@@ -48,7 +49,7 @@ query($q: String!) {
       }
     }
   }
-}' -f q="<keywords> is:unanswered updated:>=__SINCE__"
+}' -f q="<keywords> is:unanswered is:open created:>=__SINCE__"
 ```
 
 Run this once per topic keyword from `CLAUDE.md` → "Target topics" (both
@@ -74,7 +75,7 @@ query($owner: String!, $name: String!) {
     discussions(
       first: 20
       answered: false
-      orderBy: {field: UPDATED_AT, direction: DESC}
+      orderBy: {field: CREATED_AT, direction: DESC}
     ) {
       nodes {
         url
@@ -83,6 +84,7 @@ query($owner: String!, $name: String!) {
         author { login }
         createdAt
         updatedAt
+        closed
         isAnswered
         answer { bodyText author { login } createdAt }
         answerChosenAt
@@ -137,9 +139,9 @@ have from another path.
 Keep a discussion only if **all** of the following hold:
 
 - Defensive sanity check: `isAnswered == false`, `answer == null`,
-  `answerChosenAt == null`. The `answered: false` connection arg is the
-  primary cut; this catches edge cases (re-categorized threads, manual
-  unmarks).
+  `answerChosenAt == null`, `closed == false`. The `answered: false`
+  connection arg is the primary cut for unanswered; this catches edge cases
+  (re-categorized threads, manual unmarks, closed-but-unanswered threads).
 - **Not already reported.** Fetch existing issues in
   `gistrec/community-assistant` once at the start of this step and skip any
   candidate whose URL appears in an existing body (open or closed):
@@ -151,7 +153,7 @@ Keep a discussion only if **all** of the following hold:
   ```
 - `category.isAnswerable == true`, and the category is not
   announcement / general / show-and-tell.
-- `updatedAt` is within the last 90 days.
+- `createdAt` is within the last 30 days.
 - It is a real technical question mapping to a target topic in `CLAUDE.md`.
 - It is not in a skip-domain (legal, security-sensitive, medical, financial,
   personal).
@@ -189,17 +191,20 @@ Create one issue per draft. Title and body format come from
 
 For each draft:
 
-1. Build a body file (`mktemp`) with these fields and sections:
-   - `**Discussion:** <url>`
-   - `**Repository:** <owner/repo>`
-   - `**Author:** @<discussion author>`
+1. Build a body file (`mktemp`) with these fields and sections (match the
+   template in `CLAUDE.md` → "Output format" exactly — link form is required
+   for any GitHub login, never bare `@<login>`):
+   - `**Discussion:** [<discussion title>](<url>)`
+   - `**Repository:** [<owner/repo>](https://github.com/<owner/repo>)`
+   - `**Author:** [<discussion author>](https://github.com/<discussion author>)`
    - `**Updated:** <discussion updatedAt>`
    - `**Topic:** <topic>`
    - `**Confidence:** high | medium`
    - `**Why useful:** <short reason>`
    - `## Context` — 1–3 sentences summarising the discussion and existing
-     comments.
-   - `## Draft reply` — the draft.
+     comments. Refer to commenters descriptively; never bare `@<login>`.
+   - `## Draft reply` — the draft (3–10 lines). Same rule — if a login is
+     unavoidable, use `[@<login>](https://github.com/<login>)`.
    - `## Checklist` — three unchecked items per the CLAUDE.md template.
 
 2. Create the issue:
