@@ -91,6 +91,25 @@ Skip any seed repo where `hasDiscussionsEnabled = false` (verify defensively —
 this list can drift). It is fine to add/remove entries; keep it small (≤ ~20)
 and only include repos with active answerable categories.
 
+## Pre-publish review
+
+Every draft must pass an automated review through OpenAI Chat Completions
+(`$OPENAI_API_KEY`, default model `gpt-5`, override via
+`OPENAI_REVIEW_MODEL`) before it becomes an issue. The review is a **gate**,
+not advisory:
+
+- `reject` → the draft is dropped and **no issue is created**.
+- `revise` → an issue is created, but the body gets a `## ChatGPT review`
+  section listing the model's rationale and each flagged issue. The
+  maintainer revises before posting.
+- `approve` → the issue is created as-is.
+
+If the OpenAI call fails (missing key, network, non-200, malformed JSON),
+the routine **fails closed**: the draft is dropped and the reason is
+recorded in the run report. Do not retry. See
+`.claude/scripts/review_draft.py` for the integration and exact JSON
+contracts.
+
 ## Tooling
 
 Use `gh api graphql` for everything related to GitHub Discussions.
@@ -181,6 +200,12 @@ Issue body:
 - [ ] I verified the answer is not duplicating an existing comment
 - [ ] I posted the reply manually
 ```
+
+If the pre-publish ChatGPT review returned `verdict: revise`, insert a
+`## ChatGPT review` section between `## Draft reply` and `## Checklist`
+with the model's rationale and the flagged issues. Omit the section when
+the verdict is `approve`. Drafts with verdict `reject` are not turned into
+issues at all.
 
 ## Limits per run
 

@@ -18,14 +18,21 @@ Drafts only — the routine never writes to other people's repos.
      comment that already provides an adequate answer.
 2. Drafts a short, practical reply only where confidence is high and the
    draft adds something the existing comments don't already cover.
-3. Creates one issue per draft (title `Draft: <owner/repo> — <discussion title>`)
-   labelled `draft`, `github-discussion`, `needs-review`. URLs already tracked
-   in this repo's open or closed issues are skipped.
+3. Sends each draft through OpenAI Chat Completions
+   (default model `gpt-5`, env `OPENAI_API_KEY`) for a pre-publish review.
+   `reject` verdicts are dropped silently; `revise` verdicts keep the draft
+   but attach the model's notes to the issue body so I can fix them before
+   posting. If the API call fails the draft is dropped (fail-closed).
+4. Creates one issue per surviving draft
+   (title `Draft: <owner/repo> — <discussion title>`) labelled `draft`,
+   `github-discussion`, `needs-review`. URLs already tracked in this repo's
+   open or closed issues are skipped.
 
 ## Setup
 
 ```bash
 gh auth login          # GitHub CLI must be authenticated
+export OPENAI_API_KEY=…   # required — drafts that can't be reviewed are dropped
 git remote add origin git@github.com:gistrec/community-assistant.git
 git push -u origin main
 
@@ -48,3 +55,4 @@ working directory = this repo. To run on demand, type `/daily` from here.
 | --- | --- |
 | `CLAUDE.md` | Rules, target topics, filters, output format. Auto-loaded by Claude Code. |
 | `.claude/commands/daily.md` | `/daily` slash command — the routine itself. |
+| `.claude/scripts/review_draft.py` | Pre-publish ChatGPT gate (called from `/daily`). |

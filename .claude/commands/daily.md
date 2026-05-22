@@ -184,12 +184,87 @@ acceptable** — never inflate to fill the quota. If nothing passes the bar,
 print a short summary of what was checked (repos scanned, candidates seen,
 why each was rejected) and end with `No drafts today.`.
 
-### 6. Open issues (one per draft)
+### 6. Pre-publish review (ChatGPT)
 
-Create one issue per draft. Title and body format come from
-`CLAUDE.md` → "Output format" — do not improvise the format here.
+For every surviving draft, run a one-shot review through OpenAI before
+turning it into an issue. This catches invented APIs, duplicated comments,
+promotional drift, bare `@<login>` mentions, and skip-domain slips that the
+earlier filters missed. The review is a **gate** — `reject` verdicts are
+dropped on the floor and never become issues.
 
-For each draft:
+**Auth.** Read `$OPENAI_API_KEY` from the environment. If it is unset or
+empty, **skip every remaining draft** (fail-closed) and note the reason in
+the final report. No verification, no issue.
+
+**Build the input.** For each draft, use the `Write` tool to create a temp
+JSON file with this shape (use data already in your candidate list — do not
+re-fetch the discussion):
+
+```json
+{
+  "discussion": {
+    "title": "<title>",
+    "url": "<url>",
+    "topic": "<one of the target topics>",
+    "body": "<bodyText>",
+    "answer": "<answer.bodyText or null>",
+    "comments": [
+      {"author": "<login>", "body": "<bodyText>"}
+    ]
+  },
+  "draft": "<the draft reply, exact text you'd put under ## Draft reply>"
+}
+```
+
+**Run the script.**
+
+```bash
+python3 .claude/scripts/review_draft.py "$INPUT_FILE"
+```
+
+The script prints a single-line JSON result. On success:
+
+```json
+{
+  "ok": true,
+  "verdict": "approve" | "revise" | "reject",
+  "issues": [
+    {"severity": "low|medium|high", "category": "<tag>", "description": "<text>"}
+  ],
+  "rationale": "<1-2 sentences>"
+}
+```
+
+On failure (missing key, network error, non-200 from OpenAI, malformed
+model output):
+
+```json
+{"ok": false, "error": "<reason>"}
+```
+
+The script exits non-zero on failure. **Treat any failure as fail-closed:
+drop the draft and record the error in the final report. Do not retry.**
+Default model is `gpt-5`; override via `OPENAI_REVIEW_MODEL` if the account
+needs a different identifier.
+
+**Apply the gate.**
+
+- `verdict == "reject"` — drop the draft. Record
+  `<repo> — <title>: rejected (<rationale>)` for the final report.
+- `verdict == "revise"` — keep the draft. In step 7, insert a
+  `## ChatGPT review` section between `## Draft reply` and `## Checklist`
+  (see step 7 for the exact format).
+- `verdict == "approve"` — keep the draft. No extra section.
+
+Delete the temp input file after use.
+
+### 7. Open issues (one per surviving draft)
+
+Create one issue per draft that passed the gate (verdict `approve` or
+`revise`). Title and body format come from `CLAUDE.md` → "Output format" —
+do not improvise the format here.
+
+For each surviving draft:
 
 1. Build a body file (`mktemp`) with these fields and sections (match the
    template in `CLAUDE.md` → "Output format" exactly — link form is required
@@ -205,6 +280,23 @@ For each draft:
      comments. Refer to commenters descriptively; never bare `@<login>`.
    - `## Draft reply` — the draft (3–10 lines). Same rule — if a login is
      unavoidable, use `[@<login>](https://github.com/<login>)`.
+   - `## ChatGPT review` — **include only when the step 6 verdict was
+     `revise`.** Render as:
+
+     ```markdown
+     ## ChatGPT review (verdict: revise)
+
+     <rationale>
+
+     **Issues to address before posting:**
+
+     - **(high)** [<category>] <description>
+     - **(medium)** [<category>] <description>
+     ```
+
+     One bullet per issue from the review output, preserving severity
+     ordering (high → medium → low). Omit this section entirely when the
+     verdict was `approve`.
    - `## Checklist` — three unchecked items per the CLAUDE.md template.
 
 2. Create the issue:
@@ -223,10 +315,14 @@ For each draft:
 
 4. Remove the temp file.
 
-### 7. Report
+### 8. Report
 
-Print a one-line summary per draft (`<repo> — <title> — <url>`) and the total
-count.
+Print a one-line summary per published draft
+(`<repo> — <title> — <verdict> — <url>`) and the total count. Also list
+drafts that were rejected by the ChatGPT gate
+(`<repo> — <title>: rejected — <rationale>`) and any drafts dropped due to
+review-call failure (`<repo> — <title>: review failed — <error>`). If
+nothing was published, end with `No drafts today.`.
 
 ## Hard rules
 
