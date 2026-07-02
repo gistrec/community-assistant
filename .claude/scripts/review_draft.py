@@ -17,12 +17,14 @@ Reads a JSON payload at ``argv[1]`` with this shape::
 
 Calls the OpenAI Chat Completions endpoint to evaluate the draft against the
 project's posting rules. Requires ``OPENAI_API_KEY`` in the environment.
-Model defaults to ``gpt-5``; override with ``OPENAI_REVIEW_MODEL`` if needed.
+Model defaults to ``gpt-5.5`` at ``reasoning_effort: high``, falling back to
+``gpt-5.4`` when the account lacks access to the flagship; override with
+``OPENAI_REVIEW_MODEL`` / ``OPENAI_REVIEW_EFFORT``.
 
 Prints a single-line JSON result to stdout. On success::
 
     {"ok": true, "verdict": "approve|revise|reject",
-     "issues": [...], "rationale": "..."}
+     "issues": [...], "rationale": "...", "model": "<model id used>"}
 
 On failure (network, missing key, malformed model output)::
 
@@ -40,12 +42,15 @@ import urllib.error
 import urllib.request
 
 
+DEFAULT_MODELS = ("gpt-5.5", "gpt-5.4")
+
+
 SYSTEM_PROMPT = """You are a strict reviewer for an automated GitHub Discussions reply bot. The bot drafts short replies to fresh, unanswered questions in third-party repos. A human maintainer reviews every draft before posting it manually. Your job is to catch problems BEFORE drafts reach the maintainer's queue, so weak ones don't waste review time.
 
 Apply the project's posting rules:
 1. Draft must be 3-10 lines, practical, and technically correct.
 2. Must NOT invent APIs, flags, compiler options, or library behaviors. Citing well-known patterns is fine; making up function names, signatures, or flags is not.
-3. Must NOT duplicate the chosen answer or any existing comment. If existing comments already cover the same ground, REJECT unless the draft adds a clearly useful correction or missing detail.
+3. The draft must be the FIRST substantive answer in the thread. If any existing comment from someone other than the discussion author already attempts a direct answer (a solution, explanation, workaround, or diagnosis) - even a partial, unconfirmed, or wrong one - REJECT. Correcting or extending existing answers is out of scope for this bot. Comments like "+1", bot notices, or requests for more info do not count as answer attempts.
 4. Must NOT mainly promote a specific tool, library, blog post, or someone's profile.
 5. Must NOT contain bare @<login> mentions anywhere. Only the markdown-link form is allowed: [@login](https://github.com/login). A bare "@login" in the draft is a HIGH-severity issue.
 6. Must actually answer the question being asked, not a related one.
@@ -57,17 +62,17 @@ Return STRICT JSON only - no prose, no markdown, no code fences:
 {
   "verdict": "approve" | "revise" | "reject",
   "issues": [
-    {"severity": "low" | "medium" | "high", "category": "<short tag like 'duplication', 'invented_api', 'tone', 'promotion', 'bare_mention', 'off_topic', 'length', 'skip_domain'>", "description": "<concrete one-liner>"}
+    {"severity": "low" | "medium" | "high", "category": "<short tag like 'not_first_answer', 'duplication', 'invented_api', 'tone', 'promotion', 'bare_mention', 'off_topic', 'length', 'skip_domain'>", "description": "<concrete one-liner>"}
   ],
   "rationale": "<1-2 sentence overall judgment>"
 }
 
 Verdict rules:
 - approve: post as-is; no issues or only nitpicks.
-- revise: fixable problems (wording, tone, minor inaccuracy, missing caveat); core idea sound; maintainer should edit before posting.
-- reject: wrong, duplicative, promotional, off-topic, in a skip-domain, contains bare @-mentions, or otherwise should not be posted at all.
+- revise: fixable problems (wording, tone, minor inaccuracy, missing caveat); core idea sound. The bot applies your issues to the draft and resubmits it for one re-review, so make each issue concrete and actionable.
+- reject: wrong, not the first answer in the thread, duplicative, promotional, off-topic, in a skip-domain, contains bare @-mentions, or otherwise should not be posted at all.
 
-If existing comments already adequately answer the question and the draft adds nothing novel, default to reject.
+If any existing comment already attempts to answer the question, default to reject.
 """
 
 
@@ -113,7 +118,7 @@ def build_user_message(payload):
     )
 
 
-def call_openai(api_key, model, system_msg, user_msg):
+def call_openai(api_key, model, effort, system_msg, user_msg):
     payload = {
         "model": model,
         "response_format": {"type": "json_object"},
@@ -122,6 +127,8 @@ def call_openai(api_key, model, system_msg, user_msg):
             {"role": "user", "content": user_msg},
         ],
     }
+    if effort and model.startswith(("gpt-5", "o")):
+        payload["reasoning_effort"] = effort
     req = urllib.request.Request(
         "https://api.openai.com/v1/chat/completions",
         data=json.dumps(payload).encode("utf-8"),
@@ -150,7 +157,9 @@ def main():
         _emit({"ok": False, "error": "OPENAI_API_KEY is not set"})
         return 1
 
-    model = (os.environ.get("OPENAI_REVIEW_MODEL") or "gpt-5").strip()
+    override = (os.environ.get("OPENAI_REVIEW_MODEL") or "").strip()
+    candidates = [override] if override else list(DEFAULT_MODELS)
+    effort = (os.environ.get("OPENAI_REVIEW_EFFORT") or "high").strip()
 
     try:
         with open(sys.argv[1], "r", encoding="utf-8") as f:
@@ -161,19 +170,30 @@ def main():
 
     user_msg = build_user_message(payload)
 
-    try:
-        response = call_openai(api_key, model, SYSTEM_PROMPT, user_msg)
-    except urllib.error.HTTPError as e:
-        body = ""
+    response = None
+    model_used = None
+    for i, model in enumerate(candidates):
         try:
-            body = e.read().decode("utf-8", "replace")
-        except Exception:
-            pass
-        _emit({"ok": False, "error": "HTTP " + str(e.code) + ": " + body[:500]})
-        return 1
-    except Exception as e:
-        _emit({"ok": False, "error": "Network/runtime: " + repr(e)})
-        return 1
+            response = call_openai(api_key, model, effort, SYSTEM_PROMPT, user_msg)
+            model_used = model
+            break
+        except urllib.error.HTTPError as e:
+            body = ""
+            try:
+                body = e.read().decode("utf-8", "replace")
+            except Exception:
+                pass
+            unavailable = e.code in (403, 404) or "model_not_found" in body
+            if unavailable and i + 1 < len(candidates):
+                sys.stderr.write("review model " + model + " unavailable, "
+                                 "trying " + candidates[i + 1] + "\n")
+                continue
+            _emit({"ok": False, "error": "HTTP " + str(e.code)
+                   + " (model " + model + "): " + body[:500]})
+            return 1
+        except Exception as e:
+            _emit({"ok": False, "error": "Network/runtime: " + repr(e)})
+            return 1
 
     try:
         content = response["choices"][0]["message"]["content"]
@@ -216,6 +236,7 @@ def main():
         "verdict": verdict,
         "issues": issues,
         "rationale": str(review.get("rationale", "")),
+        "model": model_used,
     })
     return 0
 

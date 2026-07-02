@@ -1,5 +1,5 @@
 ---
-description: Find unanswered GitHub Discussions on target topics and draft replies as issues in this repo
+description: Find GitHub Discussions on target topics with no direct answer yet and draft first replies as issues in this repo
 ---
 
 Run the daily Community Assistant routine.
@@ -49,14 +49,23 @@ query($q: String!) {
       }
     }
   }
-}' -f q="<keywords> is:unanswered is:open created:>=__SINCE__"
+}' -f q="<keywords> is:unanswered is:open created:>=__SINCE__ comments:0"
 ```
 
 Run this once per topic keyword from `CLAUDE.md` → "Target topics" (both
 primary **and** "also welcome"). Suggested keyword set: `cmake`, `vcpkg`,
 `conan`, `pybind11`, `cpp`, `c++`, `modern c++`, `python packaging`,
-`pyproject`, `setuptools`, `poetry`, `github actions`. Add `language:C++`
-or `language:Python` to a query when the bare keyword would be too broad.
+`pyproject`, `setuptools`, `poetry`, `github actions`.
+
+Query notes:
+
+- Keep `comments:0` in every query — it filters server-side to threads
+  nobody has replied to yet, which is exactly what we draft for (first
+  answers). If a keyword comes back nearly empty, retry it once with
+  `comments:<=3` and triage the comments locally in step 3.
+- Do **not** add `language:` to DISCUSSION searches — it silently returns
+  zero results (observed 2026-07-02). Narrow an overly broad keyword with a
+  second term (e.g. `cpp linker`) instead.
 
 Treat `is:unanswered` as best-effort — still apply the defensive check in
 step 3 (`isAnswered == false`, `answer == null`, `answerChosenAt == null`).
@@ -157,14 +166,22 @@ Keep a discussion only if **all** of the following hold:
 - It is a real technical question mapping to a target topic in `CLAUDE.md`.
 - It is not in a skip-domain (legal, security-sensitive, medical, financial,
   personal).
+- **Comment triage (cheap pre-filter):** `comments.totalCount == 0` passes
+  outright — nothing to read. If `totalCount > 5`, skip without reading:
+  threads that busy nearly always contain an answer attempt. For 1–5
+  comments, read them and apply the next two checks.
 - After reading existing comments, it does **not** appear solved
   (see "Discussion handling" in `CLAUDE.md`).
-- No existing comment already covers the answer you'd write — unless you have
-  a clearly useful correction or missing detail.
+- **No answer attempt yet** (first-answer rule — see "Discussion handling"
+  in `CLAUDE.md`): no commenter other than OP has proposed a solution,
+  explanation, workaround, or diagnosis, even a partial or unconfirmed one.
+  Non-answers ("+1", bot notices, requests for more info, OP's own
+  follow-ups) don't disqualify the thread.
 - The draft would not mainly promote a tool, library, blog post, or my
   profile (see Rules in `CLAUDE.md`).
 
-Sort survivors by repo stargazer count desc — bigger repos first.
+Sort survivors: zero-comment threads first, then by repo stargazer count
+desc — bigger repos first.
 
 ### 4. Draft
 
@@ -175,7 +192,7 @@ Confidence:
 - **low** — skip.
 
 Drafts: 3–10 lines, code only if it materially helps. No filler, no apologies,
-no "great question". If adding to an existing comment, lead with what's new.
+no "great question".
 
 ### 5. Stop
 
@@ -184,12 +201,13 @@ acceptable** — never inflate to fill the quota. If nothing passes the bar,
 print a short summary of what was checked (repos scanned, candidates seen,
 why each was rejected) and end with `No drafts today.`.
 
-### 6. Pre-publish review (ChatGPT)
+### 6. Pre-publish review + revision round (ChatGPT)
 
-For every surviving draft, run a one-shot review through OpenAI before
-turning it into an issue. This catches invented APIs, duplicated comments,
-promotional drift, bare `@<login>` mentions, and skip-domain slips that the
-earlier filters missed. The review is a **gate** — `reject` verdicts are
+For every surviving draft, run a review through OpenAI before turning it
+into an issue (draft → review → apply fixes → one re-review → final
+answer). This catches invented APIs, answer attempts in the
+comments that step 3 missed, promotional drift, bare `@<login>` mentions,
+and skip-domain slips. The review is a **gate** — `reject` verdicts are
 dropped on the floor and never become issues.
 
 **Auth.** Read `$OPENAI_API_KEY` from the environment. If it is unset or
@@ -231,7 +249,8 @@ The script prints a single-line JSON result. On success:
   "issues": [
     {"severity": "low|medium|high", "category": "<tag>", "description": "<text>"}
   ],
-  "rationale": "<1-2 sentences>"
+  "rationale": "<1-2 sentences>",
+  "model": "<model id used>"
 }
 ```
 
@@ -243,20 +262,33 @@ model output):
 ```
 
 The script exits non-zero on failure. **Treat any failure as fail-closed:
-drop the draft and record the error in the final report. Do not retry.**
-Default model is `gpt-5`; override via `OPENAI_REVIEW_MODEL` if the account
-needs a different identifier.
+drop the draft and record the error in the final report. Do not retry a
+failed call.** Default model is `gpt-5.5` at `reasoning_effort: high`; the
+script falls back to `gpt-5.4` when the account lacks flagship access.
+Override via `OPENAI_REVIEW_MODEL` / `OPENAI_REVIEW_EFFORT` (e.g. `xhigh`
+for the heaviest reviews).
 
-**Apply the gate.**
+**Apply the gate (with one revision round).**
 
 - `verdict == "reject"` — drop the draft. Record
   `<repo> — <title>: rejected (<rationale>)` for the final report.
-- `verdict == "revise"` — keep the draft. In step 7, insert a
-  `## ChatGPT review` section between `## Draft reply` and `## Checklist`
-  (see step 7 for the exact format).
-- `verdict == "approve"` — keep the draft. No extra section.
+- `verdict == "approve"` — keep the draft as-is. No extra section in step 7.
+- `verdict == "revise"` — apply the fixes, then re-review **once**:
 
-Delete the temp input file after use.
+  1. Rewrite the draft so every flagged issue is addressed. All drafting
+     rules still apply (3–10 lines, no invented APIs, no bare `@<login>`,
+     no promotion, first-answer policy).
+  2. Build a fresh temp JSON with the same discussion payload and the
+     revised draft, and run the script again. Round 2 is the **only**
+     re-review — never loop further.
+  3. Round 2 `approve` — publish the revised draft; in step 7 add the
+     `## ChatGPT review` section recording both rounds.
+  4. Round 2 `revise` — publish the revised draft; the step 7 section
+     marks the remaining issues as outstanding for the maintainer.
+  5. Round 2 `reject` — drop the draft. Record
+     `<repo> — <title>: rejected on re-review (<rationale>)`.
+
+Delete every temp input file after use.
 
 ### 7. Open issues (one per surviving draft)
 
@@ -280,23 +312,31 @@ For each surviving draft:
      comments. Refer to commenters descriptively; never bare `@<login>`.
    - `## Draft reply` — the draft (3–10 lines). Same rule — if a login is
      unavoidable, use `[@<login>](https://github.com/<login>)`.
-   - `## ChatGPT review` — **include only when the step 6 verdict was
-     `revise`.** Render as:
+   - `## ChatGPT review` — **include only when the draft went through the
+     step 6 revision round** (round 1 said `revise`). `## Draft reply`
+     always holds the final revised text. Render as:
 
      ```markdown
-     ## ChatGPT review (verdict: revise)
+     ## ChatGPT review
 
-     <rationale>
+     - **Round 1:** revise — <round 1 rationale>
+       - **(high)** [<category>] <description> — applied
+       - **(medium)** [<category>] <description> — applied
+     - **Round 2:** approve — <round 2 rationale>
 
-     **Issues to address before posting:**
+     <details>
+     <summary>Original draft (before review fixes)</summary>
 
-     - **(high)** [<category>] <description>
-     - **(medium)** [<category>] <description>
+     <the round 1 draft text>
+
+     </details>
      ```
 
-     One bullet per issue from the review output, preserving severity
-     ordering (high → medium → low). Omit this section entirely when the
-     verdict was `approve`.
+     One bullet per round 1 issue, preserving severity ordering
+     (high → medium → low). If round 2 returned `revise`, list its issues
+     under the Round 2 bullet marked `— outstanding` and add a closing
+     line `Resolve the outstanding issues before posting.` Omit this whole
+     section when round 1 already said `approve`.
    - `## Checklist` — three unchecked items per the CLAUDE.md template.
 
 2. Create the issue:
@@ -318,11 +358,12 @@ For each surviving draft:
 ### 8. Report
 
 Print a one-line summary per published draft
-(`<repo> — <title> — <verdict> — <url>`) and the total count. Also list
-drafts that were rejected by the ChatGPT gate
-(`<repo> — <title>: rejected — <rationale>`) and any drafts dropped due to
-review-call failure (`<repo> — <title>: review failed — <error>`). If
-nothing was published, end with `No drafts today.`.
+(`<repo> — <title> — <final verdict, rounds used, review model> — <url>`)
+and the total count. Also list drafts rejected by the ChatGPT gate in
+either round (`<repo> — <title>: rejected — <rationale>`) and any drafts
+dropped due to review-call failure
+(`<repo> — <title>: review failed — <error>`). If nothing was published,
+end with `No drafts today.`.
 
 ## Hard rules
 
