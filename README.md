@@ -1,8 +1,6 @@
 # Community Assistant
 
-A scheduled Claude Code routine that finds fresh, unanswered GitHub
-Discussions on selected technical topics, drafts possible replies, and surfaces
-them as issues in this repo for me to review and post manually.
+A scheduled Claude Code routine that finds fresh, unanswered GitHub Discussions on selected technical topics, drafts possible replies, and surfaces them as issues in this repo for me to review and post manually.
 
 Drafts only — the routine never writes to other people's repos.
 
@@ -10,23 +8,13 @@ Drafts only — the routine never writes to other people's repos.
 
 `/daily` runs once a day in this repo:
 
-1. Searches GitHub (via GraphQL) for discussions on the target topics in
-   [`CLAUDE.md`](CLAUDE.md), restricted to:
+1. Searches GitHub (via GraphQL) for discussions on the target topics in [`CLAUDE.md`](CLAUDE.md), restricted to:
    - **created** within the last **30 days**,
    - `closed = false` (the discussion is still open),
-   - `isAnswered = false`, `answer = null`, `answerChosenAt = null`, and no
-     comment that already provides an adequate answer.
-2. Drafts a short, practical reply only where confidence is high and the
-   draft adds something the existing comments don't already cover.
-3. Sends each draft through OpenAI Chat Completions
-   (default model `gpt-5`, env `OPENAI_API_KEY`) for a pre-publish review.
-   `reject` verdicts are dropped silently; `revise` verdicts keep the draft
-   but attach the model's notes to the issue body so I can fix them before
-   posting. If the API call fails the draft is dropped (fail-closed).
-4. Creates one issue per surviving draft
-   (title `Draft: <owner/repo> — <discussion title>`) labelled `draft`,
-   `github-discussion`, `needs-review`. URLs already tracked in this repo's
-   open or closed issues are skipped.
+   - `isAnswered = false`, `answer = null`, `answerChosenAt = null`, and no answer attempt from anyone but OP — the draft must be the **first** substantive reply, so even a partial or unconfirmed attempt disqualifies the thread.
+2. Drafts a short, practical reply where confidence is high or medium (medium drafts flag their uncertainty); low-confidence candidates are skipped.
+3. Sends each draft through OpenAI Chat Completions (default model `gpt-5.5`, falling back to `gpt-5.4`; env `OPENAI_API_KEY`) for a pre-publish review. `revise` verdicts get the fixes applied and one re-review, and the issue records both rounds in a `## ChatGPT review` section; `reject` verdicts (either round) drop the draft and are listed in the run report. If the API call fails the draft is dropped (fail-closed).
+4. Creates one issue per surviving draft (title `Draft: <owner/repo> — <discussion title>`) labelled `draft`, `github-discussion`, `needs-review`. URLs already tracked in this repo's open or closed issues are skipped.
 
 ## Setup
 
@@ -46,8 +34,7 @@ gh label create answer-accepted   -R gistrec/community-assistant --color 0e8a16
 gh label create answer-rejected   -R gistrec/community-assistant --color b60205
 ```
 
-Schedule via `/schedule` in Claude Code: cron `0 9 * * *`, prompt `/daily`,
-working directory = this repo. To run on demand, type `/daily` from here.
+Schedule via `/schedule` in Claude Code: cron `0 9 * * *`, prompt `/daily`, working directory = this repo. To run on demand, type `/daily` from here.
 
 ## Layout
 
