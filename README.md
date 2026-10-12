@@ -1,5 +1,8 @@
 # Community Assistant
 
+[![answers posted](https://img.shields.io/github/issues-search?query=repo%3Agistrec%2Fcommunity-assistant%20label%3Aposted%2Canswer-accepted&label=answers%20posted&color=0e8a16)](https://github.com/gistrec/community-assistant/issues?q=label%3Aposted%2Canswer-accepted)
+[![accepted](https://img.shields.io/github/issues-search?query=repo%3Agistrec%2Fcommunity-assistant%20label%3Aanswer-accepted&label=accepted&color=success)](https://github.com/gistrec/community-assistant/issues?q=label%3Aanswer-accepted)
+
 A scheduled Claude Code routine that finds fresh, unanswered GitHub Discussions on selected technical topics, drafts possible replies, and surfaces them as issues in this repo for me to review and post manually.
 
 Drafts only — the routine never writes to other people's repos.
