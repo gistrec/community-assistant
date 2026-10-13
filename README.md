@@ -1,7 +1,7 @@
 # Community Assistant
 
-[![answers posted](https://img.shields.io/github/issues-search?query=repo%3Agistrec%2Fcommunity-assistant%20label%3Aposted%2Canswer-accepted&label=answers%20posted&color=0e8a16)](https://github.com/gistrec/community-assistant/issues?q=label%3Aposted%2Canswer-accepted)
-[![accepted](https://img.shields.io/github/issues-search?query=repo%3Agistrec%2Fcommunity-assistant%20label%3Aanswer-accepted&label=accepted&color=success)](https://github.com/gistrec/community-assistant/issues?q=label%3Aanswer-accepted)
+[![answers posted](https://img.shields.io/github/issues-search/gistrec/community-assistant?query=label%3Aposted%2Canswer-accepted%2Canswer-rejected%20is%3Aissue&label=answers%20posted&color=0e8a16)](https://github.com/gistrec/community-assistant/issues?q=label%3Aposted%2Canswer-accepted%2Canswer-rejected%20is%3Aissue)
+[![accepted answers](https://img.shields.io/github/issues-search/gistrec/community-assistant?query=label%3Aanswer-accepted%20is%3Aissue&label=accepted&color=0e8a16)](https://github.com/gistrec/community-assistant/issues?q=label%3Aanswer-accepted%20is%3Aissue)
 
 A scheduled Claude Code routine that finds fresh, unanswered GitHub Discussions on selected technical topics, drafts possible replies, and surfaces them as issues in this repo for me to review and post manually.
 
@@ -28,14 +28,24 @@ git remote add origin git@github.com:gistrec/community-assistant.git
 git push -u origin main
 
 # Optional: pre-create labels (otherwise issues are created without labels).
-gh label create draft             -R gistrec/community-assistant --color ededed
-gh label create github-discussion -R gistrec/community-assistant --color 0e8a16
+gh label create draft             -R gistrec/community-assistant --color 5319e7
+gh label create github-discussion -R gistrec/community-assistant --color 0366d6
 gh label create needs-review      -R gistrec/community-assistant --color fbca04
 
-# Outcome labels — applied manually after posting the reply.
+# Review labels — applied manually when closing a draft issue.
+gh label create posted            -R gistrec/community-assistant --color 0e8a16
+gh label create skipped           -R gistrec/community-assistant --color d93f0b
+gh label create stale             -R gistrec/community-assistant --color bfdadc
+
+# Outcome labels — added on top of `posted` once OP reacts.
 gh label create answer-accepted   -R gistrec/community-assistant --color 0e8a16
 gh label create answer-rejected   -R gistrec/community-assistant --color b60205
 ```
+
+Label lifecycle (the README badges count these labels):
+
+1. When closing a draft issue, replace `needs-review` with exactly one of `posted` (reply is live) or `skipped` (not posted); add `stale` if the thread went stale.
+2. Never remove `posted`. Outcome labels go on top of it: add `answer-accepted` when OP marks the reply as the answer (even after the issue is closed), or `answer-rejected` if OP turns it down.
 
 Schedule via `/schedule` in Claude Code: cron `0 9 * * *`, prompt `/daily`, working directory = this repo. To run on demand, type `/daily` from here.
 
