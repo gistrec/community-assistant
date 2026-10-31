@@ -67,6 +67,9 @@ Also welcome (treat as full search seeds, not just post-hoc filters):
 - GitHub Actions / CI
 - packaging
 - geospatial algorithms
+- MCP (Model Context Protocol) servers / SDKs, FastMCP
+- Python web backend: FastAPI, pydantic, SQLAlchemy, Alembic, httpx
+- Infra / DevOps: Docker Compose, nginx, Cloudflare, S3 / boto3
 
 Every topic above is eligible as a query keyword in the discussion search
 described under "Tooling". Don't restrict the candidate pool to only the
@@ -93,6 +96,7 @@ them (no `topic:` tag, or buried by larger repos).
 - `PyO3/maturin`
 - `cpm-cmake/CPM.cmake`
 - `doctest/doctest`
+- `PrefectHQ/fastmcp`
 
 Skip any seed repo where `hasDiscussionsEnabled = false` (verify defensively —
 this list can drift). It is fine to add/remove entries; keep it small (≤ ~20)

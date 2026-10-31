@@ -55,7 +55,15 @@ query($q: String!) {
 Run this once per topic keyword from `CLAUDE.md` → "Target topics" (both
 primary **and** "also welcome"). Suggested keyword set: `cmake`, `vcpkg`,
 `conan`, `pybind11`, `cpp`, `c++`, `modern c++`, `python packaging`,
-`pyproject`, `setuptools`, `poetry`, `github actions`.
+`pyproject`, `setuptools`, `poetry`, `github actions`, `"mcp server"`,
+`fastmcp`, `"model context protocol"`, `fastapi`, `pydantic`, `sqlalchemy`,
+`alembic`, `httpx`, `"docker compose" error`, `nginx proxy`,
+`cloudflare dns`, `boto3 s3`.
+
+FastAPI and SQLAlchemy are keyword-only on purpose: their maintainers
+answer within hours, so they are not seed repos (checked 2026-10-31: 0 of
+28 fresh unanswered threads had zero comments). Infra keywords are noisy —
+always pair them with a second term and drop off-topic hits in step 3.
 
 Query notes:
 
@@ -162,6 +170,14 @@ Keep a discussion only if **all** of the following hold:
   ```
 - `category.isAnswerable == true`, and the category is not
   announcement / general / show-and-tell.
+- **Not a bug report, feature request, or registry submission**, even when
+  the category is answerable. Skip categories whose name matches (case-
+  insensitive) `issue triage`, `potential issue`, `bug`, `feature`, `idea`,
+  `proposal`, `rfc`, `request script`, and skip
+  `github/github-mcp-server` threads titled "Onboarding request" / "MCP
+  Registry nomination". These are addressed to maintainers; a community
+  first answer has nothing to add (observed 2026-10-31: they were most of
+  the zero-comment hits for `"mcp server"`, `httpx`, `nginx proxy`).
 - `createdAt` is within the last 30 days.
 - It is a real technical question mapping to a target topic in `CLAUDE.md`.
 - It is not in a skip-domain (legal, security-sensitive, medical, financial,

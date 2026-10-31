@@ -47,7 +47,7 @@ Label lifecycle (the README badges count these labels):
 1. When closing a draft issue, replace `needs-review` with exactly one of `posted` (reply is live) or `skipped` (not posted); add `stale` if the thread went stale.
 2. Never remove `posted`. Outcome labels go on top of it: add `answer-accepted` when OP marks the reply as the answer (even after the issue is closed), or `answer-rejected` if OP turns it down.
 
-Schedule via `/schedule` in Claude Code: cron `0 9 * * *`, prompt `/daily`, working directory = this repo. To run on demand, type `/daily` from here.
+Schedule via `/schedule` in Claude Code: cron `0 5,13,21 * * *` (Europe/Belgrade; three runs a day because unanswered threads usually get a first reply within hours), prompt `/daily`, working directory = this repo. To run on demand, type `/daily` from here.
 
 ## Layout
 
