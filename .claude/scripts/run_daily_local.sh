@@ -26,9 +26,14 @@ if [[ -f .env ]]; then
   source .env
 fi
 
+# Per-run temp dir: the agent can't delete files (rm isn't allowed), so the
+# wrapper owns cleanup.
+RUN_TMP="$(mktemp -d "${TMPDIR:-/tmp}/ca-run.XXXXXX")"
+trap 'rm -rf "$RUN_TMP"; rmdir "$LOCK_DIR"' EXIT
+
 {
   echo "=== $(date) start"
-  claude -p "/daily" \
+  claude -p "/daily — put every temp file under $RUN_TMP; the wrapper deletes it after the run, so skip cleanup." \
     --permission-mode auto \
     --allowedTools "Read" "Write" "Glob" "Grep" \
       "Bash(gh api graphql:*)" "Bash(gh issue list:*)" "Bash(gh issue create:*)" \
