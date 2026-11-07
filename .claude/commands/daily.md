@@ -159,15 +159,21 @@ Keep a discussion only if **all** of the following hold:
   `answerChosenAt == null`, `closed == false`. The `answered: false`
   connection arg is the primary cut for unanswered; this catches edge cases
   (re-categorized threads, manual unmarks, closed-but-unanswered threads).
-- **Not already reported.** Fetch existing issues in
-  `gistrec/community-assistant` once at the start of this step and skip any
-  candidate whose URL appears in an existing body (open or closed):
+- **Not already reported.** Fetch the set of discussion URLs already tracked
+  in `gistrec/community-assistant` (open or closed issues) once at the start
+  of this step and skip any candidate whose `url` is in that set:
 
   ```bash
   gh issue list -R gistrec/community-assistant \
-    --state all --limit 200 \
-    --json title,body,url
+    --state all --limit 1000 --json body \
+    --jq '[.[].body | scan("https://github\\.com/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/discussions/[0-9]+")] | unique | .[]'
   ```
+
+  Do **not** dump full issue bodies (`--json body` without `--jq`): the
+  output is hundreds of KB, gets truncated, and URLs from older issues are
+  silently missed (the likely cause of duplicates #42/#64 and #84/#86).
+  Also skip a candidate whose URL matches another draft already created
+  earlier in the same run.
 - `category.isAnswerable == true`, and the category is not
   announcement / general / show-and-tell.
 - **Not a bug report, feature request, or registry submission**, even when
