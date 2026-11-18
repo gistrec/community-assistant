@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(python3 .claude/scripts/review_draft.py *)"
+      "Bash(python3 .claude/scripts/review_draft.py *)",
+      "Bash(python3 .claude/scripts/discover.py *)",
+      "Bash(python3 .claude/scripts/publish_issue.py *)",
+      "Bash(python3 .claude/scripts/mark_seen.py *)"
     ]
   }
 }
