@@ -34,8 +34,8 @@ me to review.
 - **First answer only.** Draft only when nobody has attempted a direct answer
   yet — the draft must be the first substantive reply in the thread. If any
   commenter other than OP has already proposed a solution, explanation,
-  workaround, or diagnosis — even a partial, unconfirmed, or seemingly wrong
-  one — skip the discussion. Correcting or extending existing answers is out
+  workaround, or diagnosis — in a comment or in a nested reply, even a
+  partial, unconfirmed, or seemingly wrong one — skip the discussion. Correcting or extending existing answers is out
   of scope for this routine.
 - Comments that do **not** count as answer attempts: "+1" / "same issue",
   bot and automation notices, requests for more info ("can you post the full
@@ -75,6 +75,10 @@ Every topic above is eligible as a query keyword in the discussion search
 described under "Tooling". Don't restrict the candidate pool to only the
 primary three.
 
+The bullets of this section are read by `review_draft.py` and handed to the
+reviewer as the list of allowed topics — keep one topic per bullet. Search
+keywords for these topics live in `.claude/scripts/discovery.json`.
+
 ## Seed repositories
 
 The routine should always scan unanswered discussions in this curated list
@@ -102,33 +106,63 @@ Skip any seed repo where `hasDiscussionsEnabled = false` (verify defensively —
 this list can drift). It is fine to add/remove entries; keep it small (≤ ~20)
 and only include repos with active answerable categories.
 
+`discover.py` parses this list, so keep the ``- `owner/repo` `` bullet form.
+
 ## Pre-publish review
 
-Every draft must pass an automated review through OpenAI Chat Completions
+Every draft goes through an automated review by OpenAI Chat Completions
 (`$OPENAI_API_KEY`; default model `gpt-5.5` at `reasoning_effort: high`,
 falling back to `gpt-5.4` when the account lacks flagship access; override
 via `OPENAI_REVIEW_MODEL` / `OPENAI_REVIEW_EFFORT`) before it becomes an
-issue. The review is a **gate with one revision round**
-(draft → review → apply fixes → re-review → final answer):
+issue. The review is **advisory, with one revision round**
+(draft → review → apply fixes → re-review → final answer). It never drops
+a draft — I see every one and decide myself:
 
-- `reject` → the draft is dropped and **no issue is created**.
-- `revise` → the flagged issues are **applied to the draft** (all drafting
-  rules still hold) and the revised draft is re-reviewed **once**:
-  - re-review `approve` → the issue is created with the revised text; a
-    `## ChatGPT review` section records both rounds and keeps the original
-    draft in a collapsed block.
-  - re-review `revise` → the issue is created with the revised text; the
-    section marks the remaining issues as outstanding for the maintainer.
-  - re-review `reject` → the draft is dropped.
 - `approve` → the issue is created as-is (no review section).
+- `revise` → the flagged issues are **applied to the draft** (all drafting
+  rules still hold) and the revised draft is re-reviewed **once**. The
+  issue is created with the revised text whatever round 2 says; a
+  `## ChatGPT review` section records both rounds, marks remaining issues
+  as outstanding and keeps the original draft in a collapsed block.
+- `reject` (either round) → the issue is still created, with the
+  reviewer's reasons in the `## ChatGPT review` section and the extra label
+  `review-rejected`. The draft is not rewritten to appease the reviewer.
+- OpenAI call fails (missing key, network, non-200, malformed JSON) → the
+  issue is still created and the section says the draft was not reviewed.
+  The script itself retries a transient failure (HTTP 429 / 5xx, timeout)
+  once; never retry a failed call beyond that.
 
-If the OpenAI call fails (missing key, network, non-200, malformed JSON),
-the routine **fails closed**: the draft is dropped and the reason is
-recorded in the run report. Do not retry a failed call. See
-`.claude/scripts/review_draft.py` for the integration and exact JSON
-contracts.
+This is an experiment started 2026-11-18 (before that the review was a hard
+gate: `reject` and failed calls dropped the draft, so its mistakes were
+invisible). Around 2026-12-18 compare the reviewer's verdicts with my
+`posted` / `skipped` labels and decide: restore the gate, keep it advisory,
+or remove the review. See `.claude/scripts/review_draft.py` for the
+integration and exact JSON contracts.
+
+The reviewer only sees the draft. Bare `@name` mentions are additionally
+caught by a regex: `review_draft.py` refuses a draft that contains one, and
+`publish_issue.py` wraps any bare `@name` in the rest of the issue body
+(context, reviewer remarks, original draft) in backticks.
 
 ## Tooling
+
+The `/daily` routine does not call `gh` itself. All GitHub access goes
+through the scripts in `.claude/scripts/`:
+
+- `discover.py` — the three discovery paths, every mechanical filter, dedup
+  against tracked issues and the seen-cache. Writes `index.md`, `c/NNN.md`
+  and `candidates.json` into the run directory.
+- `review_draft.py` — the pre-publish (advisory) review.
+- `publish_issue.py` — review bookkeeping + lint + dedup + live re-check of
+  the thread, then the single `gh issue create`.
+- `mark_seen.py` — records triage decisions in the seen-cache
+  (`.cache/seen.json`, gitignored; delete the file to reset it).
+
+The headless wrapper denies the agent every direct `gh` command, so "never
+write to other repos" is enforced by permissions, not just by this file.
+The notes below describe the GitHub API behaviour the scripts rely on —
+follow them when changing the scripts or exploring by hand in an
+interactive session.
 
 Use `gh api graphql` for everything related to GitHub Discussions.
 **Do not use the CLI `gh search discussions` — that subcommand does not
@@ -157,8 +191,9 @@ GraphQL is required for:
 - **Reading content per discussion:** `title`, `bodyText`, `url`,
   `author { login }`, `createdAt`, `updatedAt`, `closed`, `isAnswered`,
   `answer { bodyText author { login } createdAt }`, `answerChosenAt`,
-  `comments(first: N) { totalCount nodes { bodyText author { login } createdAt isAnswer } }`,
-  `category { name isAnswerable }`.
+  `comments(first: N) { totalCount nodes { bodyText author { login } createdAt isAnswer replies(first: N) { totalCount nodes { bodyText author { login } } } } }`,
+  `category { name isAnswerable }`. Always fetch `replies` — an answer
+  attempt can sit in a nested reply, invisible in the top-level comments.
 
 For repository-level discovery (as a third, fallback path), `gh api graphql`
 with `search(type: REPOSITORY, query: "topic:<topic> language:<lang> pushed:>=<date>")`
@@ -166,7 +201,8 @@ is fine. Combine `topic:` **and** `language:` — many active C++/Python repos
 don't set a `topic:` tag, so `topic:` alone is too narrow. Paginate past the
 first 25 results when the query is broad.
 
-**Read-only on external repos.** The only allowed write call is:
+**Read-only on external repos.** The only allowed write call is the one
+inside `publish_issue.py`:
 
 ```
 gh issue create -R gistrec/community-assistant ...
@@ -182,8 +218,9 @@ When creating issues, add labels:
 - `draft`
 - `github-discussion`
 - `needs-review`
+- `review-rejected` — only when the reviewer's final verdict was `reject`
 
-If labels do not exist, create the issue without labels.
+If labels do not exist, create the issue without them.
 
 If no drafts pass the bar, do **not** create an issue. Print a short summary of
 what was checked and end with `No drafts today.`
@@ -223,12 +260,12 @@ Issue body:
 ```
 
 `## Draft reply` always holds the **final** text (after any review fixes).
-If the draft went through the revision round, insert a `## ChatGPT review`
-section between `## Draft reply` and `## Checklist` recording both review
-rounds (issues marked `applied` / `outstanding`) and the original draft in
-a collapsed `<details>` block. Omit the section when round 1 already said
-`approve`. Drafts with a final verdict of `reject` are not turned into
-issues at all.
+Unless round 1 said `approve`, insert a `## ChatGPT review` section between
+`## Draft reply` and `## Checklist` recording every review round (issues
+marked `applied` / `outstanding`, or "unavailable" for a failed call) and,
+after a revision round, the original draft in a collapsed `<details>`
+block. A final verdict of `reject` is stated prominently there.
+`publish_issue.py` renders all of this — don't build the body by hand.
 
 ## Limits per run
 

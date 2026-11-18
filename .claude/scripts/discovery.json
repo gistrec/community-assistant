@@ -1,0 +1,75 @@
+{
+  "keywords": [
+    "cmake",
+    "vcpkg",
+    "conan",
+    "pybind11",
+    "cpp",
+    "c++",
+    "modern c++",
+    "python packaging",
+    "pyproject",
+    "setuptools",
+    "poetry",
+    "github actions",
+    "\"mcp server\"",
+    "fastmcp",
+    "\"model context protocol\"",
+    "fastapi",
+    "pydantic",
+    "sqlalchemy",
+    "alembic",
+    "httpx",
+    "\"docker compose\" error",
+    "nginx proxy",
+    "cloudflare dns",
+    "boto3 s3"
+  ],
+  "repo_searches": [
+    "topic:cpp language:C++",
+    "topic:cmake language:CMake",
+    "topic:cmake language:C++",
+    "topic:header-only language:C++",
+    "topic:pybind11 language:C++",
+    "topic:vcpkg language:CMake",
+    "topic:conan language:Python",
+    "topic:python language:Python",
+    "topic:packaging language:Python",
+    "topic:github-actions language:TypeScript",
+    "topic:gis language:C++",
+    "topic:geospatial language:Python",
+    "topic:mcp language:Python",
+    "topic:mcp-server language:TypeScript",
+    "topic:fastapi language:Python",
+    "topic:pydantic language:Python",
+    "topic:sqlalchemy language:Python",
+    "topic:docker-compose language:Shell",
+    "topic:nginx language:Go"
+  ],
+  "repos_per_search": 5,
+  "max_discovered_repos": 40,
+  "exclude_repos": [
+    "fastapi/fastapi",
+    "sqlalchemy/sqlalchemy"
+  ],
+  "skip_category_patterns": [
+    "announcement",
+    "general",
+    "show and tell",
+    "show-and-tell",
+    "issue triage",
+    "potential issue",
+    "bug",
+    "feature",
+    "idea",
+    "proposal",
+    "rfc",
+    "request script"
+  ],
+  "skip_title_rules": [
+    {
+      "repo": "github/github-mcp-server",
+      "title_contains": ["onboarding request", "mcp registry nomination"]
+    }
+  ]
+}
